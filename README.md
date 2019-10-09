@@ -12,7 +12,7 @@ Prerequisites:
 * Open GL dev libraries
 
 
-''' python ./setup.py '''
+''' python ./setup.py install '''
 
 ### Test
 
