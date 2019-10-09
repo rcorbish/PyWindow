@@ -15,8 +15,6 @@
 #include <stdlib.h>
 
 #define GL_GLEXT_PROTOTYPES
-#include <GL/glut.h>
-
 #include <GLFW/glfw3.h>
 
 
@@ -52,23 +50,25 @@ typedef struct {
   char window_title[128] ;
 } PyWindow ;
 
+GLFWwindow* window ;
 GLuint shaderProgram ;
 GLuint texture ;
 GLuint VBO, VAO, EBO;
 
-void setupFace() {
+void createVertexData( PyWindow *self ) {
     float vertices[] = {
         // positions          // texture coords
          1.0f,  1.0f, 0.0f,   1.0f, 1.0f, // top right
          1.0f, -1.0f, 0.0f,   1.0f, 0.0f, // bottom right
         -1.0f, -1.0f, 0.0f,   0.0f, 0.0f, // bottom left
         -1.0f,  1.0f, 0.0f,   0.0f, 1.0f  // top left 
-    };
+    } ;
  
     unsigned int indices[] = {  // note that we start from 0!
         0, 1, 3,  // first Triangle
         1, 2, 3   // second Triangle
-    };
+    } ;
+
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
@@ -89,6 +89,8 @@ void setupFace() {
     glEnableVertexAttribArray(1);
 }
 
+
+
 GLuint createTexture( PyWindow *self ) {
   GLuint textureID;
   glGenTextures(1, &textureID);
@@ -107,8 +109,7 @@ GLuint createTexture( PyWindow *self ) {
 }
 
 
-GLuint createProgram() {
-
+GLuint createProgram( PyWindow *self ) {
   GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
   glShaderSource(vertexShader, 1, &Vertex_Shader_Source, NULL);
   glCompileShader(vertexShader);
@@ -148,7 +149,9 @@ GLuint createProgram() {
 }
 
 
-void renderScene(void) {
+void renderScene( PyWindow *self ) {
+  glfwMakeContextCurrent(window) ;
+
   glUseProgram( shaderProgram ) ;
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT) ;
@@ -162,37 +165,37 @@ void renderScene(void) {
   glUseProgram( 0 ) ;
 
   glFlush();
-  glutSwapBuffers();
-  glutPostRedisplay();
+
+  glfwSwapBuffers( window );
+}
+
+static void resize( GLFWwindow *window, int width, int height ) {
+  glfwMakeContextCurrent( window ) ;
+  PyWindow *self = reinterpret_cast<PyWindow*>( glfwGetWindowUserPointer( window ) ) ;
+  self->height = height ;
+  self->width = width ;
+  glViewport(0, 0, width, height) ;
 }
 
 static void openwin( PyWindow *self ) {
-
-    int argc = 1 ;
-    char * argv[] = { "open" }  ;
-
-    glutInit( &argc, argv );
-
-    //  Request double buffered true color window with Z-buffer
-    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
-
-    glutInitWindowPosition( 100, 100 );
-    glutInitWindowSize( self->width, self->height );
+    glfwInit();
 
     // Create window
-    glutCreateWindow( self->window_title );
-  
+    window = glfwCreateWindow( self->width, self->height, self->window_title, NULL, NULL);
+    
+    glfwMakeContextCurrent( window ) ;
+    glfwSetWindowUserPointer( window, self ) ;
+
+    glfwSetWindowSizeCallback( window, resize ) ;
     // Enable Z-buffer depth test & textures
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_TEXTURE_2D) ;
 
-    shaderProgram = createProgram() ;
-    setupFace() ;
+    shaderProgram = createProgram( self ) ;
+    createVertexData( self ) ;
     texture = createTexture( self ) ;
     GLint loc = glGetUniformLocation( shaderProgram, "tex1") ;
     glUniform1i( loc, 0 );    
-
-    glutDisplayFunc( renderScene );
 }
 
 
@@ -204,13 +207,14 @@ static void openwin( PyWindow *self ) {
 
 static void PyWindow_dealloc(PyWindow *self) {
   Py_TYPE(self)->tp_free((PyObject *)self);
+  glfwDestroyWindow( window ) ;
 }
 
 static PyObject *PyWindow_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
   PyWindow *self = (PyWindow *)type->tp_alloc(type, 0);
   return (PyObject *)self;
 }
- 
+
 static int PyWindow_init(PyWindow *self, PyObject *args, PyObject *kwargs ) {
 // What am I looking for?
   static char *kwlist[] = {
@@ -227,7 +231,6 @@ static int PyWindow_init(PyWindow *self, PyObject *args, PyObject *kwargs ) {
   if( PyArg_ParseTupleAndKeywords(args, kwargs, "|iis", kwlist, 
             &self->width, &self->height, &tmp_title ) ) {  
     strncpy( self->window_title, tmp_title, sizeof( self->window_title) ) ;
-    openwin( self ) ; 
   } else {
 // in case of error
     PyGILState_STATE gstate = PyGILState_Ensure();
@@ -235,6 +238,9 @@ static int PyWindow_init(PyWindow *self, PyObject *args, PyObject *kwargs ) {
     PyGILState_Release(gstate);
     return 1 ;
   }
+
+  openwin( self ) ; 
+
 // Success return
   return 0;
 }
@@ -267,52 +273,6 @@ static PyObject *PyWindow_repr( PyWindow *self ) {
 
 
 /********************************************************************
- * 
- * Mapping Methods
- * 
- * Used to implement a dictionary
- * 
- * __len__        len(a)
- * __getitem__    a[x]
- * __setitem__    a[x] = y
- *  
- ********************************************************************/
-static int PyWindow_len(PyWindow *self) {
-  return self->width * self->height ;
-}
-
-static PyObject* PyWindow_getitem(PyWindow *self, PyObject *ix ) {
-  size_t index = PyLong_AsSize_t( ix ) ;
-  if( index >= (self->width*self->height) ) {
-    PyGILState_STATE gstate = PyGILState_Ensure();
-    PyErr_SetString(PyExc_IndexError, "Out of bounds!" ) ;
-    PyGILState_Release(gstate);
-    return 0 ;
-  }
-  u_int32_t x = index % self->width ;
-  u_int32_t y = index / self->height ;
-  return PyLong_FromLong( 0 ) ;
-}
-
-static int PyWindow_setitem(PyWindow *self, PyObject *ix, PyObject *val ) {
-  int index = PyLong_AsSize_t( ix ) ;
-  if( index >= (self->width*self->height) ) {
-    PyGILState_STATE gstate = PyGILState_Ensure();
-    PyErr_SetString(PyExc_IndexError, "Out of bounds!" ) ;
-    PyGILState_Release(gstate);
-    return 0 ;
-  }
-  // do something
-  return 0 ;
-}
-
-static PyMappingMethods PyWindow_mappings = {
-  (lenfunc)PyWindow_len,
-  (binaryfunc)PyWindow_getitem,
-  (objobjargproc)PyWindow_setitem
-};
-
-/********************************************************************
  *
  * Regular Methods
  * 
@@ -335,8 +295,10 @@ static PyObject *set_image( PyWindow *self, PyObject *args ) {
       PyErr_SetString(PyExc_Exception, "set_image requires a numpy array of shape [width,height,4] to hold RGBA bytes" ) ;
       PyGILState_Release(gstate);
     } else {
+      glfwMakeContextCurrent(window) ;
+
       // "Bind" the newly created texture : all future texture functions will modify this texture
-      glBindTexture(GL_TEXTURE_2D, texture );
+      glBindTexture(GL_TEXTURE_2D, texture ) ;
 
       void *data = PyArray_DATA( arr ) ;
       // Give the image to OpenGL
@@ -348,13 +310,19 @@ static PyObject *set_image( PyWindow *self, PyObject *args ) {
 
 
 static PyObject *show( PyWindow *self ) {
-    glutMainLoop() ;
-    Py_RETURN_NONE ;
+    int closing = glfwWindowShouldClose(window) ;
+    if( !closing ) {
+        renderScene( self ) ;
+        /* Poll for and process events */
+        glfwPollEvents();
+    }
+    return Py_BuildValue( "b", !closing ) ;
 }
+
 
 static PyMethodDef PyWindow_methods[] = {
   {"set_image", (PyCFunction)set_image, METH_VARARGS, "Sets data for the screen image, should be RGBA format, and sizeof screen"},
-  {"show", (PyCFunction)show, METH_NOARGS, "Shows the window"},
+  {"show", (PyCFunction)show, METH_NOARGS, "Process the window events"},
   {NULL, NULL, 0, NULL}
 };
 
@@ -376,7 +344,7 @@ static PyTypeObject PyWindowType = {
     (reprfunc)PyWindow_repr,                /* tp_repr */
     0,                                        /* tp_as_number */
     0,                                        /* tp_as_sequence */
-    &PyWindow_mappings,                     /* tp_as_mapping */
+    0,                                        /* tp_as_mapping */
     0,                                        /* tp_hash  */
     0,                                        /* tp_call */
     0,                                        /* tp_str */
@@ -420,7 +388,7 @@ static struct PyModuleDef pywindow_definition = {
 };
 
 PyMODINIT_FUNC PyInit_pywindow(void) {
-  import_array() ;
+  import_array() ;  // Using numpy funcs? MUST call this first 
 
   srand48( getpid() ) ;
   srand( getpid() ) ;

@@ -6,7 +6,7 @@ pywindow_module = Extension(
     'pywindow',
     sources=['pywindow.cpp'],
     extra_compile_args = ['--std=c++17', '-g3', '-O0', '-Wno-write-strings' ],
-    libraries = ['stdc++', 'glut', 'GLU' ],
+    libraries = ['stdc++', 'glfw', 'GLU' ],
     language='C++17', )
 
 setup(

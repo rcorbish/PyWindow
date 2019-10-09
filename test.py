@@ -1,26 +1,22 @@
 #!/usr/bin/env python
-import threading
+
 import numpy as np
 import sys
 import time
 from pywindow import PyWindow
 
-win = 0 
+win = PyWindow( width=300, height=200 )
 
-def glutMainLoop( win2 ) :
-    win = PyWindow( width=200, height=200 )
-    a = np.random.rand( 10,10,4 )
+a = ( np.random.rand( 5, 5, 4 ) * 255 ).astype( np.uint8 )
+b = np.ones( np.shape(a), dtype=np.uint8 )
+
+for x in range( np.shape(a)[0] ) :
+    for y in range( np.shape(a)[1] ) :
+        a[x][y][3] = 1
+        b[x][y][3] = 0
+    
+while win.show() :
+    a = a + b
     win.set_image( a )
-    print( "Starting thread" )
-    win.show() 
-    print( "Ending thread" )
-
-t = threading.Thread( target=glutMainLoop, args=(win,) )
-t.start() 
-
-# glutMainLoop()
-
-# while True :
-#     a = np.random.rand( 10,10,4 )
-#     win.set_image( a )
-#     time.sleep( 0.2 )
+    
+    time.sleep( 0.001 )
